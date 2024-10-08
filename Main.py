@@ -153,6 +153,22 @@ if uploaded_file is not None:
             if "Time" not in wot_data.columns:
                 st.error("Time column is missing after mapping. Cannot proceed with plotting and analysis.")
             else:
+                # Convert all relevant columns to numeric types
+                numeric_columns = [col for col in wot_data.columns if col != "Time"]
+                for col in numeric_columns:
+                    wot_data[col] = pd.to_numeric(wot_data[col], errors='coerce')
+
+                # Display DataFrame info for debugging
+                st.subheader("DataFrame Information")
+                buffer = io.StringIO()
+                wot_data.info(buf=buffer)
+                s = buffer.getvalue()
+                st.text(s)
+
+                # Display a sample of the DataFrame
+                st.subheader("Data Sample")
+                st.write(wot_data.head())
+
                 # Create dynamic list of traces
                 traces = []
                 y_axis_assignments = {}
@@ -209,7 +225,10 @@ if uploaded_file is not None:
                 fig.update_layout(layout_dict)
 
                 # Display the interactive graph
-                st.plotly_chart(fig)
+                try:
+                    st.plotly_chart(fig)
+                except Exception as e:
+                    st.error(f"Error plotting Engine Parameters: {e}")
 
                 # Log Report Section
                 st.subheader("Log Report")
@@ -219,177 +238,198 @@ if uploaded_file is not None:
 
                 # 1. Peak Boost
                 if "Boost Pressure" in wot_data.columns:
-                    peak_boost = wot_data["Boost Pressure"].max()
-                    peak_boost_time = wot_data.loc[wot_data["Boost Pressure"].idxmax(), "Time"]
-                    log_report += f"**Peak Boost Pressure:** {peak_boost:.2f} psi at {peak_boost_time} seconds.\n\n"
+                    try:
+                        peak_boost = wot_data["Boost Pressure"].max()
+                        peak_boost_time = wot_data.loc[wot_data["Boost Pressure"].idxmax(), "Time"]
+                        log_report += f"**Peak Boost Pressure:** {peak_boost:.2f} psi at {peak_boost_time} seconds.\n\n"
 
-                    # Boost Smoothness
-                    boost_std = wot_data["Boost Pressure"].std()
-                    boost_smoothness = get_smoothness_score(boost_std, data_type='boost')
-                    log_report += f"**Boost Smoothness:** {boost_smoothness} (Std Dev: {boost_std:.2f} psi).\n\n"
+                        # Boost Smoothness
+                        boost_std = wot_data["Boost Pressure"].std()
+                        boost_smoothness = get_smoothness_score(boost_std, data_type='boost')
+                        log_report += f"**Boost Smoothness:** {boost_smoothness} (Std Dev: {boost_std:.2f} psi).\n\n"
+                    except Exception as e:
+                        log_report += f"**Boost Pressure Analysis Error:** {e}\n\n"
                 else:
                     log_report += f"**Boost Pressure:** Not available.\n\n"
 
                 # 2. Boost Curve Description
                 if "Boost Pressure" in wot_data.columns:
-                    boost_start = wot_data["Boost Pressure"].iloc[0]
-                    boost_end = wot_data["Boost Pressure"].iloc[-1]
-                    if boost_end > boost_start:
-                        boost_description = "Boost pressure increases steadily during WOT."
-                    elif boost_end < boost_start:
-                        boost_description = "Boost pressure decreases steadily during WOT."
-                    else:
-                        boost_description = "Boost pressure remains stable during WOT."
-                    log_report += f"**Boost Curve Description:** {boost_description}\n\n"
+                    try:
+                        boost_start = wot_data["Boost Pressure"].iloc[0]
+                        boost_end = wot_data["Boost Pressure"].iloc[-1]
+                        if boost_end > boost_start:
+                            boost_description = "Boost pressure increases steadily during WOT."
+                        elif boost_end < boost_start:
+                            boost_description = "Boost pressure decreases steadily during WOT."
+                        else:
+                            boost_description = "Boost pressure remains stable during WOT."
+                        log_report += f"**Boost Curve Description:** {boost_description}\n\n"
+                    except Exception as e:
+                        log_report += f"**Boost Curve Description Error:** {e}\n\n"
                 else:
                     log_report += f"**Boost Curve Description:** Not available.\n\n"
 
                 # 3. Peak Ignition Timing
                 if "Ignition Timing" in wot_data.columns:
-                    peak_timing = wot_data["Ignition Timing"].max()
-                    peak_timing_time = wot_data.loc[wot_data["Ignition Timing"].idxmax(), "Time"]
-                    log_report += f"**Peak Ignition Timing:** {peak_timing:.2f} degrees at {peak_timing_time} seconds.\n\n"
+                    try:
+                        peak_timing = wot_data["Ignition Timing"].max()
+                        peak_timing_time = wot_data.loc[wot_data["Ignition Timing"].idxmax(), "Time"]
+                        log_report += f"**Peak Ignition Timing:** {peak_timing:.2f} degrees at {peak_timing_time} seconds.\n\n"
 
-                    # Timing Smoothness
-                    timing_std = wot_data["Ignition Timing"].std()
-                    timing_smoothness = get_smoothness_score(timing_std, data_type='timing')
-                    log_report += f"**Timing Smoothness:** {timing_smoothness} (Std Dev: {timing_std:.2f} degrees).\n\n"
+                        # Timing Smoothness
+                        timing_std = wot_data["Ignition Timing"].std()
+                        timing_smoothness = get_smoothness_score(timing_std, data_type='timing')
+                        log_report += f"**Timing Smoothness:** {timing_smoothness} (Std Dev: {timing_std:.2f} degrees).\n\n"
+                    except Exception as e:
+                        log_report += f"**Ignition Timing Analysis Error:** {e}\n\n"
                 else:
                     log_report += f"**Ignition Timing:** Not available.\n\n"
 
                 # 4. Fuel Pressure Drops
                 if "Fuel Rail Pressure (psi)" in wot_data.columns and "Target Rail Pressure" in wot_data.columns:
-                    fuel_pressure_psi = wot_data["Fuel Rail Pressure (psi)"]
-                    target_pressure_psi = wot_data["Target Rail Pressure"]
-                    pressure_diff = abs(fuel_pressure_psi - target_pressure_psi)
-                    fuel_pressure_issue = wot_data[pressure_diff > 50]
-                    if not fuel_pressure_issue.empty:
-                        log_report += f"**Fuel Pressure Drops:** Significant drops detected at {fuel_pressure_issue['Time'].tolist()} seconds.\n\n"
+                    try:
+                        fuel_pressure_psi = wot_data["Fuel Rail Pressure (psi)"]
+                        target_pressure_psi = wot_data["Target Rail Pressure"]
+                        pressure_diff = abs(fuel_pressure_psi - target_pressure_psi)
+                        fuel_pressure_issue = wot_data[pressure_diff > 50]
+                        if not fuel_pressure_issue.empty:
+                            log_report += f"**Fuel Pressure Drops:** Significant drops detected at {fuel_pressure_issue['Time'].tolist()} seconds.\n\n"
 
-                        # Snapshot of the issue
-                        st.subheader("Snapshot: Fuel Pressure Drops")
-                        fig_fuel_pressure = go.Figure()
-                        fig_fuel_pressure.add_trace(go.Scatter(
-                            x=fuel_pressure_issue["Time"],
-                            y=fuel_pressure_issue["Fuel Rail Pressure (psi)"],
-                            mode='lines+markers',
-                            name='Fuel Rail Pressure (psi)',
-                            line=dict(color='cyan')
-                        ))
-                        fig_fuel_pressure.update_layout(
-                            title="Fuel Pressure Drop Snapshot",
-                            xaxis_title="Time (s)",
-                            yaxis_title="Fuel Rail Pressure (psi)"
-                        )
-                        st.plotly_chart(fig_fuel_pressure)
-                    else:
-                        log_report += f"**Fuel Pressure Drops:** No significant drops detected.\n\n"
+                            # Snapshot of the issue
+                            st.subheader("Snapshot: Fuel Pressure Drops")
+                            fig_fuel_pressure = go.Figure()
+                            fig_fuel_pressure.add_trace(go.Scatter(
+                                x=fuel_pressure_issue["Time"],
+                                y=fuel_pressure_issue["Fuel Rail Pressure (psi)"],
+                                mode='lines+markers',
+                                name='Fuel Rail Pressure (psi)',
+                                line=dict(color='cyan')
+                            ))
+                            fig_fuel_pressure.update_layout(
+                                title="Fuel Pressure Drop Snapshot",
+                                xaxis_title="Time (s)",
+                                yaxis_title="Fuel Rail Pressure (psi)"
+                            )
+                            st.plotly_chart(fig_fuel_pressure)
+                        else:
+                            log_report += f"**Fuel Pressure Drops:** No significant drops detected.\n\n"
+                    except Exception as e:
+                        log_report += f"**Fuel Pressure Drops Analysis Error:** {e}\n\n"
                 else:
                     log_report += f"**Fuel Pressure Drops:** Not available.\n\n"
 
                 # 5. Boost Pressure Fluctuations
                 if "Boost Pressure" in wot_data.columns:
-                    boost_fluctuations = wot_data[wot_data["Boost Pressure"].diff().abs() > 3]
-                    if not boost_fluctuations.empty:
-                        log_report += f"**Boost Pressure Fluctuations:** Detected at {boost_fluctuations['Time'].tolist()} seconds.\n\n"
+                    try:
+                        boost_fluctuations = wot_data[wot_data["Boost Pressure"].diff().abs() > 3]
+                        if not boost_fluctuations.empty:
+                            log_report += f"**Boost Pressure Fluctuations:** Detected at {boost_fluctuations['Time'].tolist()} seconds.\n\n"
 
-                        # Snapshot of the issue
-                        st.subheader("Snapshot: Boost Pressure Fluctuations")
-                        fig_fluct = go.Figure()
-                        fig_fluct.add_trace(go.Scatter(
-                            x=boost_fluctuations["Time"],
-                            y=boost_fluctuations["Boost Pressure"],
-                            mode='lines+markers',
-                            name='Boost Pressure',
-                            line=dict(color='blue')
-                        ))
-                        fig_fluct.update_layout(
-                            title="Boost Pressure Fluctuation Snapshot",
-                            xaxis_title="Time (s)",
-                            yaxis_title="Boost Pressure (psi)"
-                        )
-                        st.plotly_chart(fig_fluct)
-                    else:
-                        log_report += f"**Boost Pressure Fluctuations:** No significant fluctuations detected.\n\n"
+                            # Snapshot of the issue
+                            st.subheader("Snapshot: Boost Pressure Fluctuations")
+                            fig_fluct = go.Figure()
+                            fig_fluct.add_trace(go.Scatter(
+                                x=boost_fluctuations["Time"],
+                                y=boost_fluctuations["Boost Pressure"],
+                                mode='lines+markers',
+                                name='Boost Pressure',
+                                line=dict(color='blue')
+                            ))
+                            fig_fluct.update_layout(
+                                title="Boost Pressure Fluctuation Snapshot",
+                                xaxis_title="Time (s)",
+                                yaxis_title="Boost Pressure (psi)"
+                            )
+                            st.plotly_chart(fig_fluct)
+                        else:
+                            log_report += f"**Boost Pressure Fluctuations:** No significant fluctuations detected.\n\n"
+                    except Exception as e:
+                        log_report += f"**Boost Pressure Fluctuations Analysis Error:** {e}\n\n"
                 else:
                     log_report += f"**Boost Pressure Fluctuations:** Not available.\n\n"
 
                 # 6. Negative Timing Deviations
                 if "Ignition Timing" in wot_data.columns:
-                    negative_timing = wot_data[wot_data["Ignition Timing"] < 0]
-                    if not negative_timing.empty:
-                        log_report += f"**Negative Timing Deviations:** Detected at {negative_timing['Time'].tolist()} seconds.\n\n"
+                    try:
+                        negative_timing = wot_data[wot_data["Ignition Timing"] < 0]
+                        if not negative_timing.empty:
+                            log_report += f"**Negative Timing Deviations:** Detected at {negative_timing['Time'].tolist()} seconds.\n\n"
 
-                        # Snapshot of the issue
-                        st.subheader("Snapshot: Negative Timing Deviation")
-                        fig_neg_timing = go.Figure()
-                        fig_neg_timing.add_trace(go.Scatter(
-                            x=negative_timing["Time"],
-                            y=negative_timing["Ignition Timing"],
-                            mode='lines+markers',
-                            name='Ignition Timing (DEG)',
-                            line=dict(color='orange')
-                        ))
-                        fig_neg_timing.update_layout(
-                            title="Negative Timing Deviation Snapshot",
-                            xaxis_title="Time (s)",
-                            yaxis_title="Ignition Timing (DEG)"
-                        )
-                        st.plotly_chart(fig_neg_timing)
-                    else:
-                        log_report += f"**Negative Timing Deviations:** No negative timing detected.\n\n"
+                            # Snapshot of the issue
+                            st.subheader("Snapshot: Negative Timing Deviation")
+                            fig_neg_timing = go.Figure()
+                            fig_neg_timing.add_trace(go.Scatter(
+                                x=negative_timing["Time"],
+                                y=negative_timing["Ignition Timing"],
+                                mode='lines+markers',
+                                name='Ignition Timing (DEG)',
+                                line=dict(color='orange')
+                            ))
+                            fig_neg_timing.update_layout(
+                                title="Negative Timing Deviation Snapshot",
+                                xaxis_title="Time (s)",
+                                yaxis_title="Ignition Timing (DEG)"
+                            )
+                            st.plotly_chart(fig_neg_timing)
+                        else:
+                            log_report += f"**Negative Timing Deviations:** No negative timing detected.\n\n"
+                    except Exception as e:
+                        log_report += f"**Negative Timing Deviations Analysis Error:** {e}\n\n"
                 else:
                     log_report += f"**Negative Timing Deviations:** Not available.\n\n"
 
                 # 7. Wastegate Valve Analysis
                 if "Wastegate Valve Position" in wot_data.columns:
-                    # a. Wastegate at 0%
-                    wastegate_zero = wot_data[wot_data["Wastegate Valve Position"] == 0]
-                    if not wastegate_zero.empty:
-                        log_report += f"**Wastegate at 0%:** Detected at {wastegate_zero['Time'].tolist()} seconds.\n\n"
+                    try:
+                        # a. Wastegate at 0%
+                        wastegate_zero = wot_data[wot_data["Wastegate Valve Position"] == 0]
+                        if not wastegate_zero.empty:
+                            log_report += f"**Wastegate at 0%:** Detected at {wastegate_zero['Time'].tolist()} seconds.\n\n"
 
-                        # Snapshot of the issue
-                        st.subheader("Snapshot: Wastegate at 0%")
-                        fig_wg_zero = go.Figure()
-                        fig_wg_zero.add_trace(go.Scatter(
-                            x=wastegate_zero["Time"],
-                            y=wastegate_zero["Wastegate Valve Position"],
-                            mode='markers',
-                            name='Wastegate Valve Position (%)',
-                            marker=dict(color='brown', size=10)
-                        ))
-                        fig_wg_zero.update_layout(
-                            title="Wastegate at 0% Snapshot",
-                            xaxis_title="Time (s)",
-                            yaxis_title="Wastegate Valve Position (%)"
-                        )
-                        st.plotly_chart(fig_wg_zero)
-                    else:
-                        log_report += f"**Wastegate at 0%:** No instances detected.\n\n"
+                            # Snapshot of the issue
+                            st.subheader("Snapshot: Wastegate at 0%")
+                            fig_wg_zero = go.Figure()
+                            fig_wg_zero.add_trace(go.Scatter(
+                                x=wastegate_zero["Time"],
+                                y=wastegate_zero["Wastegate Valve Position"],
+                                mode='markers',
+                                name='Wastegate Valve Position (%)',
+                                marker=dict(color='brown', size=10)
+                            ))
+                            fig_wg_zero.update_layout(
+                                title="Wastegate at 0% Snapshot",
+                                xaxis_title="Time (s)",
+                                yaxis_title="Wastegate Valve Position (%)"
+                            )
+                            st.plotly_chart(fig_wg_zero)
+                        else:
+                            log_report += f"**Wastegate at 0%:** No instances detected.\n\n"
 
-                    # b. Wastegate Fluctuations
-                    wastegate_fluctuations = wot_data[wot_data["Wastegate Valve Position"].diff().abs() > 5]
-                    if not wastegate_fluctuations.empty:
-                        log_report += f"**Wastegate Valve Fluctuations:** Detected at {wastegate_fluctuations['Time'].tolist()} seconds.\n\n"
+                        # b. Wastegate Fluctuations
+                        wastegate_fluctuations = wot_data[wot_data["Wastegate Valve Position"].diff().abs() > 5]
+                        if not wastegate_fluctuations.empty:
+                            log_report += f"**Wastegate Valve Fluctuations:** Detected at {wastegate_fluctuations['Time'].tolist()} seconds.\n\n"
 
-                        # Snapshot of the issue
-                        st.subheader("Snapshot: Wastegate Valve Fluctuations")
-                        fig_wg_fluct = go.Figure()
-                        fig_wg_fluct.add_trace(go.Scatter(
-                            x=wastegate_fluctuations["Time"],
-                            y=wastegate_fluctuations["Wastegate Valve Position"],
-                            mode='lines+markers',
-                            name='Wastegate Valve Position (%)',
-                            line=dict(color='brown')
-                        ))
-                        fig_wg_fluct.update_layout(
-                            title="Wastegate Valve Fluctuations Snapshot",
-                            xaxis_title="Time (s)",
-                            yaxis_title="Wastegate Valve Position (%)"
-                        )
-                        st.plotly_chart(fig_wg_fluct)
-                    else:
-                        log_report += f"**Wastegate Valve Fluctuations:** No significant fluctuations detected.\n\n"
+                            # Snapshot of the issue
+                            st.subheader("Snapshot: Wastegate Valve Fluctuations")
+                            fig_wg_fluct = go.Figure()
+                            fig_wg_fluct.add_trace(go.Scatter(
+                                x=wastegate_fluctuations["Time"],
+                                y=wastegate_fluctuations["Wastegate Valve Position"],
+                                mode='lines+markers',
+                                name='Wastegate Valve Position (%)',
+                                line=dict(color='brown')
+                            ))
+                            fig_wg_fluct.update_layout(
+                                title="Wastegate Valve Fluctuations Snapshot",
+                                xaxis_title="Time (s)",
+                                yaxis_title="Wastegate Valve Position (%)"
+                            )
+                            st.plotly_chart(fig_wg_fluct)
+                        else:
+                            log_report += f"**Wastegate Valve Fluctuations:** No significant fluctuations detected.\n\n"
+                    except Exception as e:
+                        log_report += f"**Wastegate Valve Analysis Error:** {e}\n\n"
                 else:
                     log_report += f"**Wastegate Valve Analysis:** Not available.\n\n"
 
@@ -482,4 +522,10 @@ if uploaded_file is not None:
                 all_fig.update_layout(all_layout_dict)
 
                 # Display the All Engine Parameters plot
-                st.plotly_chart(all_fig)
+                try:
+                    st.plotly_chart(all_fig)
+                except Exception as e:
+                    st.error(f"Error plotting All Engine Parameters: {e}")
+
+else:
+    st.info("Please upload a CSV file to begin analysis.")
