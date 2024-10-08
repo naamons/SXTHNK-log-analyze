@@ -102,6 +102,10 @@ def rename_duplicates(columns):
             new_columns.append(col)
     return new_columns
 
+# Callback function to deselect all parameters
+def deselect_all():
+    st.session_state.selected_parameters = []
+
 # Initialize Streamlit app
 st.title("Engine Datalog Analyzer")
 
@@ -262,6 +266,9 @@ if uploaded_file is not None:
                         default=st.session_state.selected_parameters,
                         key="selected_parameters"
                     )
+
+                    # Update session state with selected parameters
+                    st.session_state.selected_parameters = selected_params
 
                     # Assign y-axis for each selected column
                     y_axis_assignments = {col: assign_y_axis(col) for col in selected_params}
