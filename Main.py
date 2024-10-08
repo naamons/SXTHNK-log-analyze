@@ -23,7 +23,7 @@ if uploaded_file is not None:
     # Plot each column over time
     st.subheader("Graphs of all engine parameters over time")
 
-    # Create a function to plot each parameter
+    # Function to plot each parameter
     def plot_parameter(y_column, y_label):
         fig, ax = plt.subplots()
         ax.plot(data['Time (s)'], data[y_column])
@@ -41,6 +41,18 @@ if uploaded_file is not None:
     plot_parameter(' Ignition timing (DEG   )', 'Ignition Timing (DEG)')
     plot_parameter('Engine RPM (RPM   )', 'Engine RPM')
     plot_parameter('Intake Air Temperature (`F    )', 'Intake Air Temperature (F)')
+
+    # Calculate Boost Stability Score
+    data['Boost StdDev'] = data[' Boost Pressure (psi   )'].rolling(window=10).std()
+    boost_stability_score = 1 / (1 + data['Boost StdDev'].mean())
+    
+    # Calculate Timing Stability Score
+    data['Timing StdDev'] = data[' Ignition timing (DEG   )'].rolling(window=10).std()
+    timing_stability_score = 1 / (1 + data['Timing StdDev'].mean())
+
+    st.subheader("Stability Scores")
+    st.write(f"Boost Stability Score: {boost_stability_score:.2f}")
+    st.write(f"Timing Stability Score: {timing_stability_score:.2f}")
 
     # Detection logic for large boost pressure fluctuations
     boost_fluctuations = data[abs(data[' Boost Pressure (psi   )'].diff()) > 3]
