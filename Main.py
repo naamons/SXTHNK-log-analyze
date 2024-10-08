@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
-import io
 
 # Function to map CSV columns to expected data fields based on keywords
 def map_columns(columns):
@@ -103,10 +102,6 @@ def rename_duplicates(columns):
             new_columns.append(col)
     return new_columns
 
-# Callback function to deselect all parameters
-def deselect_all():
-    st.session_state.selected_parameters = []
-
 # Initialize Streamlit app
 st.title("Engine Datalog Analyzer")
 
@@ -205,7 +200,7 @@ if uploaded_file is not None:
                 wot_data_sorted = wot_data.sort_values("Time").copy()  # Ensure data is sorted by Time and make a copy
                 for col in numeric_columns:
                     if col != "Time":
-                        wot_data_sorted.loc[:, f"{col}_diff"] = wot_data_sorted[col].diff().abs()
+                        wot_data_sorted[f"{col}_diff"] = wot_data_sorted[col].diff().abs()
 
                 # Smoothness Calculation based on rolling frame-to-frame deviations
                 window_size = 5  # Adjust window size as needed
@@ -224,7 +219,29 @@ if uploaded_file is not None:
                 else:
                     timing_smoothness = "N/A"
 
-                # === Parameter Selection with "Deselect All" Button ===
+                # === Timing Anomaly Detection ===
+                st.subheader("Timing Anomaly Detection")
+                try:
+                    # Define a window to detect increase-decrease-increase pattern
+                    timing = wot_data_sorted["Ignition Timing"]
+                    anomaly_times = []
+
+                    # Iterate through the data to find the pattern
+                    for i in range(1, len(timing)-1):
+                        if timing.iloc[i] < timing.iloc[i-1] and timing.iloc[i+1] > timing.iloc[i]:
+                            anomaly_time = wot_data_sorted["Time"].iloc[i]
+                            anomaly_times.append(float(anomaly_time))  # Convert to Python float
+
+                    if anomaly_times:
+                        log_report += f"**Timing Anomalies Detected:** Occurred at {anomaly_times} seconds.\n\n"
+                        st.success(f"Timing anomalies detected at {anomaly_times} seconds.")
+                    else:
+                        log_report += f"**Timing Anomalies:** No anomalies detected.\n\n"
+                        st.info("No timing anomalies detected.")
+                except Exception as e:
+                    log_report += f"**Timing Anomaly Detection Error:** {e}\n\n"
+
+                # === All Engine Parameters Graph ===
                 st.subheader("All Engine Parameters Over Time (Dual Axis)")
                 try:
                     # Determine which columns to plot
@@ -234,8 +251,9 @@ if uploaded_file is not None:
                     if 'selected_parameters' not in st.session_state:
                         st.session_state.selected_parameters = plot_columns.copy()
 
-                    # Create "Deselect All" button
-                    st.button("Deselect All", on_click=deselect_all)
+                    # Button to deselect all (must be placed before multiselect)
+                    if st.button("Deselect All"):
+                        st.session_state.selected_parameters = []
 
                     # Multiselect for parameter selection
                     selected_params = st.multiselect(
@@ -278,7 +296,7 @@ if uploaded_file is not None:
                             )
 
                     # Add red dots for Timing Anomalies
-                    if 'anomaly_times' in locals() and anomaly_times:
+                    if anomaly_times:
                         # Extract Ignition Timing data
                         if "Ignition Timing" in wot_data_sorted.columns:
                             timing_times = anomaly_times
@@ -312,28 +330,6 @@ if uploaded_file is not None:
                     st.plotly_chart(fig)
                 except Exception as e:
                     st.error(f"Error plotting All Engine Parameters: {e}")
-
-                # === Timing Anomaly Detection ===
-                st.subheader("Timing Anomaly Detection")
-                try:
-                    # Define a window to detect increase-decrease-increase pattern
-                    timing = wot_data_sorted["Ignition Timing"]
-                    anomaly_times = []
-
-                    # Iterate through the data to find the pattern
-                    for i in range(1, len(timing)-1):
-                        if timing.iloc[i] < timing.iloc[i-1] and timing.iloc[i+1] > timing.iloc[i]:
-                            anomaly_time = wot_data_sorted["Time"].iloc[i]
-                            anomaly_times.append(float(anomaly_time))  # Convert to Python float
-
-                    if anomaly_times:
-                        log_report += f"**Timing Anomalies Detected:** Occurred at {anomaly_times} seconds.\n\n"
-                        st.success(f"Timing anomalies detected at {anomaly_times} seconds.")
-                    else:
-                        log_report += f"**Timing Anomalies:** No anomalies detected.\n\n"
-                        st.info("No timing anomalies detected.")
-                except Exception as e:
-                    log_report += f"**Timing Anomaly Detection Error:** {e}\n\n"
 
                 # === Timing Anomalies Graph ===
                 st.subheader("Ignition Timing Over Time with Anomalies")
