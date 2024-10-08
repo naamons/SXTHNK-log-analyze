@@ -103,7 +103,7 @@ def rename_duplicates(columns):
             new_columns.append(col)
     return new_columns
 
-# Streamlit app
+# Initialize Streamlit app
 st.title("Engine Datalog Analyzer")
 
 # File upload
@@ -220,14 +220,40 @@ if uploaded_file is not None:
                 else:
                     timing_smoothness = "N/A"
 
-                # Dual-Axis Graph for All Parameters with Timing Anomalies Highlighted
+                # === Parameter Selection with "Deselect All" Button ===
                 st.subheader("All Engine Parameters Over Time (Dual Axis)")
                 try:
                     # Determine which columns to plot
                     plot_columns = [col for col in wot_data_sorted.columns if col != "Time" and not col.endswith("_diff")]
 
-                    # Assign y-axis for each column
-                    y_axis_assignments = {col: assign_y_axis(col) for col in plot_columns}
+                    # Initialize Session State for parameter selection
+                    if 'selected_parameters' not in st.session_state:
+                        st.session_state.selected_parameters = plot_columns.copy()
+
+                    # Define a callback function for "Deselect All" button
+                    def deselect_all():
+                        st.session_state.selected_parameters = []
+
+                    # Create columns for layout
+                    selection_col1, selection_col2 = st.columns([4, 1])
+
+                    with selection_col1:
+                        selected_params = st.multiselect(
+                            "Select Parameters to Display",
+                            options=plot_columns,
+                            default=st.session_state.selected_parameters,
+                            key="selected_parameters"
+                        )
+
+                    with selection_col2:
+                        if st.button("Deselect All"):
+                            deselect_all()
+
+                    # Update selected parameters
+                    st.session_state.selected_parameters = selected_params
+
+                    # Assign y-axis for each selected column
+                    y_axis_assignments = {col: assign_y_axis(col) for col in st.session_state.selected_parameters}
 
                     # Determine if a secondary y-axis is needed
                     secondary_y = any(axis == 'right' for axis in y_axis_assignments.values())
@@ -236,7 +262,7 @@ if uploaded_file is not None:
                     fig = make_subplots(specs=[[{"secondary_y": secondary_y}]])
 
                     # Add each trace to the plot
-                    for col in plot_columns:
+                    for col in st.session_state.selected_parameters:
                         if y_axis_assignments[col] == 'left':
                             fig.add_trace(
                                 go.Scatter(
@@ -261,25 +287,20 @@ if uploaded_file is not None:
                     # Add red dots for Timing Anomalies
                     if 'anomaly_times' in locals() and anomaly_times:
                         # Extract Ignition Timing data
-                        timing_times = wot_data_sorted["Time"]
-                        timing_values = wot_data_sorted["Ignition Timing"]
+                        if "Ignition Timing" in wot_data_sorted.columns:
+                            timing_times = anomaly_times
+                            timing_values = wot_data_sorted.loc[wot_data_sorted["Time"].isin(anomaly_times), "Ignition Timing"]
 
-                        # Create a DataFrame for anomalies
-                        anomaly_df = pd.DataFrame({
-                            "Time": anomaly_times,
-                            "Ignition Timing": timing_values[wot_data_sorted["Time"].isin(anomaly_times)]
-                        })
-
-                        fig.add_trace(
-                            go.Scatter(
-                                x=anomaly_df["Time"],
-                                y=anomaly_df["Ignition Timing"],
-                                mode='markers',
-                                name='Timing Anomalies',
-                                marker=dict(color='red', size=10, symbol='x')
-                            ),
-                            secondary_y=True if "Ignition Timing" in y_axis_assignments and y_axis_assignments["Ignition Timing"] == 'right' else False
-                        )
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=timing_times,
+                                    y=timing_values,
+                                    mode='markers',
+                                    name='Timing Anomalies',
+                                    marker=dict(color='red', size=10, symbol='x')
+                                ),
+                                secondary_y=True if "Ignition Timing" in y_axis_assignments and y_axis_assignments["Ignition Timing"] == 'right' else False
+                            )
 
                     # Update layout
                     fig.update_layout(
@@ -299,7 +320,7 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.error(f"Error plotting All Engine Parameters: {e}")
 
-                # Timing Anomaly Detection
+                # === Timing Anomaly Detection ===
                 st.subheader("Timing Anomaly Detection")
                 try:
                     # Define a window to detect increase-decrease-increase pattern
@@ -318,10 +339,53 @@ if uploaded_file is not None:
                     else:
                         log_report += f"**Timing Anomalies:** No anomalies detected.\n\n"
                         st.info("No timing anomalies detected.")
+
+                    # === Timing Anomalies Graph ===
+                    st.subheader("Ignition Timing Over Time with Anomalies")
+                    try:
+                        if "Ignition Timing" in wot_data_sorted.columns:
+                            fig_timing = go.Figure()
+
+                            # Plot Ignition Timing
+                            fig_timing.add_trace(
+                                go.Scatter(
+                                    x=wot_data_sorted["Time"],
+                                    y=wot_data_sorted["Ignition Timing"],
+                                    mode='lines',
+                                    name='Ignition Timing'
+                                )
+                            )
+
+                            # Overlay red dots for anomalies
+                            if anomaly_times:
+                                anomaly_df = wot_data_sorted[wot_data_sorted["Time"].isin(anomaly_times)]
+                                fig_timing.add_trace(
+                                    go.Scatter(
+                                        x=anomaly_df["Time"],
+                                        y=anomaly_df["Ignition Timing"],
+                                        mode='markers',
+                                        name='Anomalies',
+                                        marker=dict(color='red', size=10, symbol='x')
+                                    )
+                                )
+
+                            fig_timing.update_layout(
+                                title="Ignition Timing Over Time with Anomalies",
+                                xaxis_title="Time (s)",
+                                yaxis_title="Ignition Timing (Degrees)",
+                                hovermode="x unified",
+                                height=500
+                            )
+
+                            st.plotly_chart(fig_timing)
+                        else:
+                            st.info("Ignition Timing data not available.")
+                    except Exception as e:
+                        st.error(f"Error generating Timing Anomalies graph: {e}")
                 except Exception as e:
                     log_report += f"**Timing Anomaly Detection Error:** {e}\n\n"
 
-                # Wastegate Valve Analysis
+                # === Wastegate Valve Analysis ===
                 st.subheader("Wastegate Valve Analysis")
                 try:
                     if "Wastegate Valve Position" in wot_data_sorted.columns:
@@ -359,7 +423,7 @@ if uploaded_file is not None:
                 except Exception as e:
                     log_report += f"**Wastegate Valve Analysis Error:** {e}\n\n"
 
-                # Fuel Pressure Drops Snapshot
+                # === Fuel Pressure Drops Snapshot ===
                 st.subheader("Snapshot: Fuel Pressure Drops")
                 try:
                     if "Fuel Rail Pressure (psi)" in wot_data_sorted.columns and "Target Rail Pressure" in wot_data_sorted.columns:
@@ -394,11 +458,11 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.error(f"Error generating Fuel Pressure Drops snapshot: {e}")
 
-                # Log Report Section
+                # === Log Report Section ===
                 st.subheader("Log Report")
                 st.markdown(log_report)
 
-                # Summary Statistics
+                # === Summary Statistics ===
                 st.subheader("Summary Statistics")
                 summary_data = {
                     "Metric": [
