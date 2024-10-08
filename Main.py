@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Streamlit app
 st.title("Engine Datalog Analyzer")
@@ -21,32 +22,31 @@ if uploaded_file is not None:
         st.subheader("Wide-Open Throttle Periods")
         st.write(wot_data)
 
-        # Plotting dual-axis graph with Plotly
-        fig = go.Figure()
+        # Create dual-axis plot using Plotly subplots
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        
+        # Plot for left y-axis (Boost Pressure, Target Rail Pressure, Engine RPM)
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Boost Pressure (psi   )'],
+                                 mode='lines', name='Boost Pressure (psi)', line=dict(color='blue')), secondary_y=False)
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Target Rail press (psi   )'],
+                                 mode='lines', name='Target Rail Pressure (psi)', line=dict(color='green')), secondary_y=False)
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Engine RPM (RPM   )'],
+                                 mode='lines', name='Engine RPM', line=dict(color='purple')), secondary_y=False)
 
-        # Add lines for Boost Pressure, Target Rail Pressure, and Engine RPM (left axis)
-        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Boost Pressure (psi   )'], 
-                                 mode='lines', name='Boost Pressure (psi)', line=dict(color='blue')))
-        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Target Rail press (psi   )'], 
-                                 mode='lines', name='Target Rail Pressure (psi)', line=dict(color='green')))
-        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Engine RPM (RPM   )'], 
-                                 mode='lines', name='Engine RPM', line=dict(color='purple')))
+        # Plot for right y-axis (Accelerator Position, Ignition Timing, Fuel Rail Pressure)
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Accelerator position (%     )'],
+                                 mode='lines', name='Accelerator Position (%)', line=dict(color='red')), secondary_y=True)
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Ignition timing (DEG   )'],
+                                 mode='lines', name='Ignition Timing (DEG)', line=dict(color='orange')), secondary_y=True)
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Fuel Rail Pressure (bar   )'],
+                                 mode='lines', name='Fuel Rail Pressure (bar)', line=dict(color='cyan')), secondary_y=True)
 
-        # Add lines for Accelerator Position, Ignition Timing, and Fuel Rail Pressure (right axis)
-        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Accelerator position (%     )'], 
-                                 mode='lines', name='Accelerator Position (%)', line=dict(color='red'), yaxis='y2'))
-        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Ignition timing (DEG   )'], 
-                                 mode='lines', name='Ignition Timing (DEG)', line=dict(color='orange'), yaxis='y2'))
-        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Fuel Rail Pressure (bar   )'], 
-                                 mode='lines', name='Fuel Rail Pressure (bar)', line=dict(color='cyan'), yaxis='y2'))
-
-        # Update layout for dual-axis
+        # Update axis labels and layout
         fig.update_layout(
             title="Engine Parameters During Wide-Open Throttle (Dual Axis)",
             xaxis_title="Time (s)",
-            yaxis=dict(title="Boost / Rail Pressure / Engine RPM", titlefont=dict(color="blue")),
-            yaxis2=dict(title="Accelerator Position / Timing / Fuel Pressure", titlefont=dict(color="red"),
-                        overlaying='y', side='right'),
+            yaxis=dict(title="Boost / Rail Pressure / Engine RPM"),
+            yaxis2=dict(title="Accelerator Position / Timing / Fuel Pressure", overlaying="y", side="right"),
             hovermode="x unified"
         )
 
