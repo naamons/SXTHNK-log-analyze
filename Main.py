@@ -286,7 +286,8 @@ if uploaded_file is not None:
                     # Iterate through the data to find the pattern
                     for i in range(1, len(timing)-1):
                         if timing.iloc[i] < timing.iloc[i-1] and timing.iloc[i+1] > timing.iloc[i]:
-                            anomaly_times.append(wot_data_sorted["Time"].iloc[i])
+                            anomaly_time = wot_data_sorted["Time"].iloc[i]
+                            anomaly_times.append(float(anomaly_time))  # Convert to Python float
 
                     if anomaly_times:
                         log_report += f"**Timing Anomalies Detected:** Occurred at {anomaly_times} seconds.\n\n"
@@ -320,8 +321,10 @@ if uploaded_file is not None:
                         if not problematic_groups.empty:
                             anomaly_periods = []
                             for group in problematic_groups.index:
-                                period = wot_data_sorted[wv_group == group]["Time"].tolist()
-                                anomaly_periods.append(period)
+                                period_times = wot_data_sorted[wv_group == group]["Time"].tolist()
+                                # Convert each time in the period to Python float
+                                period_times = [float(t) for t in period_times]
+                                anomaly_periods.append(period_times)
                             log_report += f"**Wastegate Valve Issues Detected:** Valve remained below {threshold}% for extended periods at times: {anomaly_periods} seconds.\n\n"
                             st.error(f"Wastegate valve remained below {threshold}% for extended periods at times: {anomaly_periods} seconds.\nPotential boost leak or wastegate issue.")
                         else:
@@ -341,7 +344,11 @@ if uploaded_file is not None:
                         target_pressure_psi = wot_data_sorted["Target Rail Pressure"]
                         pressure_diff = abs(fuel_pressure_psi - target_pressure_psi)
                         fuel_pressure_issue = wot_data_sorted[pressure_diff > 50]
+
                         if not fuel_pressure_issue.empty:
+                            # Convert times to Python floats
+                            fuel_pressure_issue['Time'] = fuel_pressure_issue['Time'].astype(float)
+
                             fig_fuel_pressure = go.Figure()
                             fig_fuel_pressure.add_trace(go.Scatter(
                                 x=fuel_pressure_issue["Time"],
