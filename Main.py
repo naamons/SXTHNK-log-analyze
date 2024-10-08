@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
+import io  # Added import for io.StringIO
 
 # Function to map CSV columns to expected data fields based on keywords
 def map_columns(columns):
@@ -157,6 +158,12 @@ if uploaded_file is not None:
                 numeric_columns = [col for col in wot_data.columns if col != "Time"]
                 for col in numeric_columns:
                     wot_data[col] = pd.to_numeric(wot_data[col], errors='coerce')
+
+                # Drop columns that are still non-numeric after conversion
+                non_numeric_columns = wot_data.select_dtypes(include=['object']).columns.tolist()
+                if non_numeric_columns:
+                    st.warning(f"The following columns have non-numeric data and will be excluded from analysis and plotting: {', '.join(non_numeric_columns)}")
+                    wot_data = wot_data.drop(columns=non_numeric_columns)
 
                 # Display DataFrame info for debugging
                 st.subheader("DataFrame Information")
@@ -526,6 +533,3 @@ if uploaded_file is not None:
                     st.plotly_chart(all_fig)
                 except Exception as e:
                     st.error(f"Error plotting All Engine Parameters: {e}")
-
-else:
-    st.info("Please upload a CSV file to begin analysis.")
