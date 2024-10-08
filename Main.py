@@ -220,7 +220,7 @@ if uploaded_file is not None:
                 else:
                     timing_smoothness = "N/A"
 
-                # Dual-Axis Graph for All Parameters
+                # Dual-Axis Graph for All Parameters with Timing Anomalies Highlighted
                 st.subheader("All Engine Parameters Over Time (Dual Axis)")
                 try:
                     # Determine which columns to plot
@@ -257,6 +257,29 @@ if uploaded_file is not None:
                                 ),
                                 secondary_y=True
                             )
+
+                    # Add red dots for Timing Anomalies
+                    if 'anomaly_times' in locals() and anomaly_times:
+                        # Extract Ignition Timing data
+                        timing_times = wot_data_sorted["Time"]
+                        timing_values = wot_data_sorted["Ignition Timing"]
+
+                        # Create a DataFrame for anomalies
+                        anomaly_df = pd.DataFrame({
+                            "Time": anomaly_times,
+                            "Ignition Timing": timing_values[wot_data_sorted["Time"].isin(anomaly_times)]
+                        })
+
+                        fig.add_trace(
+                            go.Scatter(
+                                x=anomaly_df["Time"],
+                                y=anomaly_df["Ignition Timing"],
+                                mode='markers',
+                                name='Timing Anomalies',
+                                marker=dict(color='red', size=10, symbol='x')
+                            ),
+                            secondary_y=True if "Ignition Timing" in y_axis_assignments and y_axis_assignments["Ignition Timing"] == 'right' else False
+                        )
 
                     # Update layout
                     fig.update_layout(
@@ -354,8 +377,8 @@ if uploaded_file is not None:
                                 x=fuel_pressure_issue["Time"],
                                 y=fuel_pressure_issue["Fuel Rail Pressure (psi)"],
                                 mode='markers',
-                                name='Fuel Rail Pressure (psi)',
-                                marker=dict(color='cyan', size=8)
+                                name='Fuel Rail Pressure Drops',
+                                marker=dict(color='red', size=10, symbol='x')
                             ))
                             fig_fuel_pressure.update_layout(
                                 title="Fuel Pressure Drops Snapshot",
