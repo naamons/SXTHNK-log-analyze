@@ -156,9 +156,12 @@ if uploaded_file is not None:
             # Rename duplicate columns to ensure uniqueness
             data_standardized.columns = rename_duplicates(data_standardized.columns)
 
+            # Initialize the log report
+            log_report = ""
+
             # Detect wide-open throttle (WOT) conditions (Accelerator Position > 95%) if accelerator position is available
             if "Accelerator Position" in data_standardized.columns:
-                wot_data = data_standardized[data_standardized["Accelerator Position"] > 95]
+                wot_data = data_standardized[data_standardized["Accelerator Position"] > 95].copy()
                 st.subheader("Wide-Open Throttle Periods")
                 try:
                     st.write(wot_data)
@@ -195,10 +198,10 @@ if uploaded_file is not None:
                     wot_data = wot_data.loc[:, ~wot_data.columns.duplicated()]
 
                 # Calculate frame-to-frame differences for smoothness
-                wot_data_sorted = wot_data.sort_values("Time")  # Ensure data is sorted by Time
+                wot_data_sorted = wot_data.sort_values("Time").copy()  # Ensure data is sorted by Time and make a copy
                 for col in numeric_columns:
                     if col != "Time":
-                        wot_data_sorted[f"{col}_diff"] = wot_data_sorted[col].diff().abs()
+                        wot_data_sorted.loc[:, f"{col}_diff"] = wot_data_sorted[col].diff().abs()
 
                 # Smoothness Calculation based on rolling frame-to-frame deviations
                 window_size = 5  # Adjust window size as needed
@@ -217,7 +220,7 @@ if uploaded_file is not None:
                 else:
                     timing_smoothness = "N/A"
 
-                # Plot Boost Pressure with rolling smoothness
+                # Plot Boost Pressure Over Time
                 st.subheader("Boost Pressure Over Time")
                 try:
                     fig_boost = go.Figure()
