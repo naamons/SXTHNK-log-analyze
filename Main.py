@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 # Streamlit app
 st.title("Engine Datalog Analyzer")
@@ -11,82 +11,67 @@ if uploaded_file is not None:
     # Load the CSV file and skip the first row (metadata)
     data = pd.read_csv(uploaded_file, skiprows=1)
 
-    # Displaying the cleaned column names for inspection
-    st.write("Cleaned Column Names:", list(data.columns))
+    # Clean up column names
+    data.columns = data.columns.str.strip()
 
-    # Detect full-throttle conditions (Accelerator Position > 95%)
+    # Detect wide-open throttle (WOT) conditions (Accelerator Position > 95%)
     if "Accelerator position (%     )" in data.columns:
-        full_throttle_data = data[data["Accelerator position (%     )"] > 95]
+        wot_data = data[data["Accelerator position (%     )"] > 95]
 
-        st.subheader("Full Throttle Events")
-        st.write(full_throttle_data)
+        st.subheader("Wide-Open Throttle Periods")
+        st.write(wot_data)
+
+        # Plotting interactive graph with Plotly
+        fig = go.Figure()
+
+        # Add lines for each relevant engine parameter
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Boost Pressure (psi   )'], mode='lines', name='Boost Pressure (psi)'))
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Accelerator position (%     )'], mode='lines', name='Accelerator Position (%)'))
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Ignition timing (DEG   )'], mode='lines', name='Ignition Timing (DEG)'))
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Fuel Rail Pressure (bar   )'], mode='lines', name='Fuel Rail Pressure (bar)'))
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Target Rail press (psi   )'], mode='lines', name='Target Rail Pressure (psi)'))
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Wastegate valve position (%     )'], mode='lines', name='Wastegate Valve Position (%)'))
+
+        # Customize layout
+        fig.update_layout(
+            title="Engine Parameters During Wide-Open Throttle",
+            xaxis_title="Time (s)",
+            yaxis_title="Values",
+            hovermode="x unified"
+        )
+
+        # Display the interactive graph
+        st.plotly_chart(fig)
+
+        # Log Report Section
+        st.subheader("Log Report")
+        
+        # Detect issues and create a report
+        log_report = ""
+
+        # Large boost pressure fluctuations
+        boost_fluctuations = wot_data[abs(wot_data['Boost Pressure (psi   )'].diff()) > 3]
+        if not boost_fluctuations.empty:
+            log_report += f"Large Boost Pressure Fluctuations Detected at:\n{boost_fluctuations['Time (s)'].tolist()}\n\n"
+
+        # Negative timing deviations
+        negative_timing = wot_data[wot_data['Ignition timing (DEG   )'] < 0]
+        if not negative_timing.empty:
+            log_report += f"Negative Timing Deviations Detected at:\n{negative_timing['Time (s)'].tolist()}\n\n"
+
+        # High wastegate valve percentage (close to 0%)
+        high_wastegate = wot_data[wot_data['Wastegate valve position (%     )'] < 1]
+        if not high_wastegate.empty:
+            log_report += f"High Wastegate Valve Position (Close to 0%) Detected at:\n{high_wastegate['Time (s)'].tolist()}\n\n"
+
+        # Fuel pressure collapse (when fuel pressure doesn't track target rail pressure)
+        fuel_pressure_issue = wot_data[abs(wot_data['Fuel Rail Pressure (bar   )'] - wot_data['Target Rail press (psi   )']) > 50]
+        if not fuel_pressure_issue.empty:
+            log_report += f"Fuel Pressure Collapse Detected at:\n{fuel_pressure_issue['Time (s)'].tolist()}\n\n"
+
+        if log_report:
+            st.write(log_report)
+        else:
+            st.write("No significant issues detected during wide-open throttle.")
     else:
-        st.error("Accelerator position column not found! Please check column names above.")
-
-    # Plot each column over time
-    st.subheader("Graphs of all engine parameters over time")
-
-    # Function to plot each parameter
-    def plot_parameter(y_column, y_label):
-        fig, ax = plt.subplots()
-        ax.plot(data['Time (s)'], data[y_column])
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel(y_label)
-        ax.set_title(f'{y_label} over time')
-        st.pyplot(fig)
-
-    # Plot individual engine parameters if columns exist
-    if 'Boost Pressure (psi   )' in data.columns:
-        plot_parameter('Boost Pressure (psi   )', 'Boost Pressure (psi)')
-    if 'Wastegate valve position (%     )' in data.columns:
-        plot_parameter('Wastegate valve position (%     )', 'Wastegate Valve Position (%)')
-    if 'Fuel Rail Pressure (bar   )' in data.columns:
-        plot_parameter('Fuel Rail Pressure (bar   )', 'Fuel Rail Pressure (bar)')
-    if 'Target Rail press (psi   )' in data.columns:
-        plot_parameter('Target Rail press (psi   )', 'Target Rail Pressure (psi)')
-    if 'Accelerator position (%     )' in data.columns:
-        plot_parameter('Accelerator position (%     )', 'Accelerator Position (%)')
-    if 'Ignition timing (DEG   )' in data.columns:
-        plot_parameter('Ignition timing (DEG   )', 'Ignition Timing (DEG)')
-    if 'Engine RPM (RPM   )' in data.columns:
-        plot_parameter('Engine RPM (RPM   )', 'Engine RPM')
-    if 'Intake Air Temperature (`F    )' in data.columns:
-        plot_parameter('Intake Air Temperature (`F    )', 'Intake Air Temperature (F)')
-
-    # Calculate Boost Stability Score
-    if 'Boost Pressure (psi   )' in data.columns:
-        data['Boost StdDev'] = data['Boost Pressure (psi   )'].rolling(window=10).std()
-        boost_stability_score = 1 / (1 + data['Boost StdDev'].mean())
-        st.subheader("Boost Stability Score")
-        st.write(f"Boost Stability Score: {boost_stability_score:.2f}")
-
-    # Calculate Timing Stability Score
-    if 'Ignition timing (DEG   )' in data.columns:
-        data['Timing StdDev'] = data['Ignition timing (DEG   )'].rolling(window=10).std()
-        timing_stability_score = 1 / (1 + data['Timing StdDev'].mean())
-        st.subheader("Timing Stability Score")
-        st.write(f"Timing Stability Score: {timing_stability_score:.2f}")
-
-    # Detection logic for large boost pressure fluctuations
-    if 'Boost Pressure (psi   )' in data.columns:
-        boost_fluctuations = data[abs(data['Boost Pressure (psi   )'].diff()) > 3]
-        st.subheader("Large Boost Pressure Fluctuations")
-        st.write(boost_fluctuations)
-
-    # Detecting negative timing deviations
-    if 'Ignition timing (DEG   )' in data.columns:
-        negative_timing = data[data['Ignition timing (DEG   )'] < 0]
-        st.subheader("Negative Timing Deviations")
-        st.write(negative_timing)
-
-    # Detect high wastegate valve percentage (close to 0%)
-    if 'Wastegate valve position (%     )' in data.columns:
-        high_wastegate = data[data['Wastegate valve position (%     )'] < 1]
-        st.subheader("High Wastegate Valve Position (Close to 0%)")
-        st.write(high_wastegate)
-
-    # Detect fuel pressure collapse (when fuel pressure doesn't track target rail pressure)
-    if 'Fuel Rail Pressure (bar   )' in data.columns and 'Target Rail press (psi   )' in data.columns:
-        fuel_pressure_issue = data[abs(data['Fuel Rail Pressure (bar   )'] - data['Target Rail press (psi   )']) > 50]
-        st.subheader("Fuel Pressure Collapses or Deviation")
-        st.write(fuel_pressure_issue)
+        st.error("Accelerator position column not found! Please check the uploaded file.")
