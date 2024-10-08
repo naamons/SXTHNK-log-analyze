@@ -220,43 +220,75 @@ if uploaded_file is not None:
                 else:
                     timing_smoothness = "N/A"
 
-                # Plot Boost Pressure Over Time
-                st.subheader("Boost Pressure Over Time")
+                # Dual-Axis Graph for All Parameters
+                st.subheader("All Engine Parameters Over Time (Dual Axis)")
                 try:
-                    fig_boost = go.Figure()
-                    fig_boost.add_trace(go.Scatter(
-                        x=wot_data_sorted["Time"],
-                        y=wot_data_sorted["Boost Pressure"],
-                        mode='lines',
-                        name='Boost Pressure',
-                        line=dict(color='blue')
-                    ))
-                    fig_boost.update_layout(
-                        title="Boost Pressure Over Time",
+                    # Determine which columns to plot
+                    plot_columns = [col for col in wot_data_sorted.columns if col != "Time" and not col.endswith("_diff")]
+
+                    # Assign y-axis for each column
+                    y_axis_assignments = {col: assign_y_axis(col) for col in plot_columns}
+
+                    # Determine if a secondary y-axis is needed
+                    secondary_y = any(axis == 'right' for axis in y_axis_assignments.values())
+
+                    # Create subplot with secondary y-axis if needed
+                    fig = make_subplots(specs=[[{"secondary_y": secondary_y}]])
+
+                    # Add each trace to the plot
+                    for col in plot_columns:
+                        if y_axis_assignments[col] == 'left':
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=wot_data_sorted["Time"],
+                                    y=wot_data_sorted[col],
+                                    mode='lines',
+                                    name=col
+                                ),
+                                secondary_y=False if secondary_y else None
+                            )
+                        else:
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=wot_data_sorted["Time"],
+                                    y=wot_data_sorted[col],
+                                    mode='lines',
+                                    name=col
+                                ),
+                                secondary_y=True
+                            )
+
+                    # Update layout
+                    fig.update_layout(
+                        title="All Engine Parameters Over Time",
                         xaxis_title="Time (s)",
-                        yaxis_title="Boost Pressure (psi)",
                         hovermode="x unified",
-                        height=500
+                        height=700
                     )
-                    st.plotly_chart(fig_boost)
+
+                    if secondary_y:
+                        fig.update_yaxes(title_text="Primary Parameters", secondary_y=False)
+                        fig.update_yaxes(title_text="Secondary Parameters", secondary_y=True)
+                    else:
+                        fig.update_yaxes(title_text="Parameters")
+
+                    st.plotly_chart(fig)
                 except Exception as e:
-                    st.error(f"Error plotting Boost Pressure: {e}")
+                    st.error(f"Error plotting All Engine Parameters: {e}")
 
                 # Timing Anomaly Detection
                 st.subheader("Timing Anomaly Detection")
                 try:
                     # Define a window to detect increase-decrease-increase pattern
                     timing = wot_data_sorted["Ignition Timing"]
-                    timing_anomaly = False
                     anomaly_times = []
 
                     # Iterate through the data to find the pattern
                     for i in range(1, len(timing)-1):
                         if timing.iloc[i] < timing.iloc[i-1] and timing.iloc[i+1] > timing.iloc[i]:
-                            timing_anomaly = True
                             anomaly_times.append(wot_data_sorted["Time"].iloc[i])
 
-                    if timing_anomaly:
+                    if anomaly_times:
                         log_report += f"**Timing Anomalies Detected:** Occurred at {anomaly_times} seconds.\n\n"
                         st.success(f"Timing anomalies detected at {anomaly_times} seconds.")
                     else:
