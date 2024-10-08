@@ -25,9 +25,9 @@ def map_columns(columns):
             mapping["accelerator_position"] = col
         elif "boost" in col_lower and "pressure" in col_lower:
             mapping["boost_pressure"] = col
-        elif ("targetrail" in col_lower or "targetrailpressure" in col_lower or "target_rail_press" in col_lower):
+        elif ("targetrail" in col_lower or "targetrailpressure" in col_lower or "targetrailpress" in col_lower):
             mapping["target_rail_pressure"] = col
-        elif "rpm" in col_lower or "engine_rpm" in col_lower:
+        elif "rpm" in col_lower or "enginerpm" in col_lower:
             mapping["engine_rpm"] = col
         elif ("ignition" in col_lower and "timing" in col_lower) or ("timingdeg" in col_lower):
             mapping["ignition_timing"] = col
@@ -56,6 +56,37 @@ def assign_y_axis(column_name):
         return 'left'
     else:
         return 'left'  # Default to left if uncertain
+
+# Function to convert Fuel Rail Pressure from bar to psi
+def convert_bar_to_psi(df, col_name):
+    return df[col_name] * 14.5038
+
+# Function to convert smoothness standard deviation to descriptive scores
+def get_smoothness_score(std_dev, data_type='boost'):
+    """
+    Define threshold ranges for smoothness descriptors.
+    Adjust these thresholds based on your specific data characteristics.
+    """
+    if data_type == 'boost':
+        if std_dev < 1:
+            return "Very Smooth"
+        elif std_dev < 3:
+            return "Smooth"
+        elif std_dev < 5:
+            return "Somewhat Smooth"
+        else:
+            return "Not Smooth"
+    elif data_type == 'timing':
+        if std_dev < 1:
+            return "Very Smooth"
+        elif std_dev < 3:
+            return "Smooth"
+        elif std_dev < 5:
+            return "Somewhat Smooth"
+        else:
+            return "Not Smooth"
+    else:
+        return "N/A"
 
 # Streamlit app
 st.title("Engine Datalog Analyzer")
@@ -87,6 +118,10 @@ if uploaded_file is not None:
             detected_columns = {key: value for key, value in column_mapping.items() if value is not None}
             st.write(detected_columns)
 
+            # Convert Fuel Rail Pressure from bar to psi if present
+            if column_mapping["fuel_rail_pressure"]:
+                data["Fuel Rail Pressure (psi)"] = convert_bar_to_psi(data, column_mapping["fuel_rail_pressure"])
+
             # Detect wide-open throttle (WOT) conditions (Accelerator Position > 95%) if accelerator position is available
             if column_mapping["accelerator_position"]:
                 wot_data = data[data[column_mapping["accelerator_position"]] > 95]
@@ -103,12 +138,14 @@ if uploaded_file is not None:
             y_axis_assignments = {}
             for key, col in column_mapping.items():
                 if col and col != column_mapping["time"]:
-                    y_axis = assign_y_axis(col)
-                    y_axis_assignments[col] = y_axis
+                    # If Fuel Rail Pressure is converted, use the new column name
+                    plot_col = "Fuel Rail Pressure (psi)" if key == "fuel_rail_pressure" else col
+                    y_axis = assign_y_axis(plot_col)
+                    y_axis_assignments[plot_col] = y_axis
                     traces.append({
-                        "name": col,
+                        "name": plot_col,
                         "x": wot_data[column_mapping["time"]],
-                        "y": wot_data[col],
+                        "y": wot_data[plot_col] if key != "fuel_rail_pressure" else wot_data["Fuel Rail Pressure (psi)"],
                         "type": "scatter",
                         "mode": "lines",
                         "yaxis": "y" if y_axis == 'left' else "y2",
@@ -135,7 +172,7 @@ if uploaded_file is not None:
 
             # Update layout
             layout_dict = {
-                "title": "Engine Parameters",
+                "title": "Engine Parameters During Wide-Open Throttle (Dual Axis)",
                 "xaxis_title": "Time (s)",
                 "hovermode": "x unified",
                 "height": 700
@@ -162,94 +199,216 @@ if uploaded_file is not None:
             # Initialize report
             log_report = ""
 
-            # Example: Calculate and report peak boost if boost pressure is available
+            # 1. Peak Boost
             if column_mapping["boost_pressure"]:
-                peak_boost = wot_data[column_mapping["boost_pressure"]].max()
-                peak_boost_time = wot_data.loc[wot_data[column_mapping["boost_pressure"]].idxmax(), column_mapping["time"]]
-                log_report += f"**Peak Boost Pressure:** {peak_boost} psi at {peak_boost_time} seconds.\n\n"
+                peak_boost = wot_data["Boost Pressure (psi)"].max()
+                peak_boost_time = wot_data.loc[wot_data["Boost Pressure (psi)"].idxmax(), column_mapping["time"]]
+                log_report += f"**Peak Boost Pressure:** {peak_boost:.2f} psi at {peak_boost_time} seconds.\n\n"
 
                 # Boost Smoothness
-                boost_std = wot_data[column_mapping["boost_pressure"]].std()
-                log_report += f"**Boost Smoothness:** Standard deviation of boost pressure is {boost_std:.2f} psi.\n\n"
+                boost_std = wot_data["Boost Pressure (psi)"].std()
+                boost_smoothness = get_smoothness_score(boost_std, data_type='boost')
+                log_report += f"**Boost Smoothness:** {boost_smoothness} (Std Dev: {boost_std:.2f} psi).\n\n"
 
-            # Example: Peak Ignition Timing
+            # 2. Boost Curve Description
+            if column_mapping["boost_pressure"]:
+                boost_start = wot_data["Boost Pressure (psi)"].iloc[0]
+                boost_end = wot_data["Boost Pressure (psi)"].iloc[-1]
+                if boost_end > boost_start:
+                    boost_description = "Boost pressure increases steadily during WOT."
+                elif boost_end < boost_start:
+                    boost_description = "Boost pressure decreases steadily during WOT."
+                else:
+                    boost_description = "Boost pressure remains stable during WOT."
+                log_report += f"**Boost Curve Description:** {boost_description}\n\n"
+
+            # 3. Peak Ignition Timing
             if column_mapping["ignition_timing"]:
                 peak_timing = wot_data[column_mapping["ignition_timing"]].max()
                 peak_timing_time = wot_data.loc[wot_data[column_mapping["ignition_timing"]].idxmax(), column_mapping["time"]]
-                log_report += f"**Peak Ignition Timing:** {peak_timing} degrees at {peak_timing_time} seconds.\n\n"
+                log_report += f"**Peak Ignition Timing:** {peak_timing:.2f} degrees at {peak_timing_time} seconds.\n\n"
 
                 # Timing Smoothness
                 timing_std = wot_data[column_mapping["ignition_timing"]].std()
-                log_report += f"**Timing Smoothness:** Standard deviation of ignition timing is {timing_std:.2f} degrees.\n\n"
+                timing_smoothness = get_smoothness_score(timing_std, data_type='timing')
+                log_report += f"**Timing Smoothness:** {timing_smoothness} (Std Dev: {timing_std:.2f} degrees).\n\n"
 
-            # Example: Fuel Pressure Drops
+            # 4. Fuel Pressure Drops
             if column_mapping["fuel_rail_pressure"] and column_mapping["target_rail_pressure"]:
-                # Assuming target rail pressure is in psi and fuel rail pressure is in bar, convert bar to psi if necessary
-                # 1 bar ≈ 14.5038 psi
-                fuel_pressure_psi = wot_data[column_mapping["fuel_rail_pressure"]] * 14.5038
-                pressure_diff = abs(fuel_pressure_psi - wot_data[column_mapping["target_rail_pressure"]])
+                # Use converted Fuel Rail Pressure (psi)
+                fuel_pressure_psi = wot_data["Fuel Rail Pressure (psi)"]
+                target_pressure_psi = wot_data[column_mapping["target_rail_pressure"]]
+                pressure_diff = abs(fuel_pressure_psi - target_pressure_psi)
                 fuel_pressure_issue = wot_data[pressure_diff > 50]
                 if not fuel_pressure_issue.empty:
                     log_report += f"**Fuel Pressure Drops:** Significant drops detected at {fuel_pressure_issue[column_mapping['time']].tolist()} seconds.\n\n"
+
+                    # Snapshot of the issue
+                    st.subheader("Snapshot: Fuel Pressure Drops")
+                    fig_fuel_pressure = go.Figure()
+                    fig_fuel_pressure.add_trace(go.Scatter(x=fuel_pressure_issue[column_mapping['time']], y=fuel_pressure_issue["Fuel Rail Pressure (psi)"],
+                                                           mode='lines+markers', name='Fuel Rail Pressure (psi)', line=dict(color='cyan')))
+                    fig_fuel_pressure.update_layout(title="Fuel Pressure Drop Snapshot", xaxis_title="Time (s)", yaxis_title="Fuel Rail Pressure (psi)")
+                    st.plotly_chart(fig_fuel_pressure)
                 else:
                     log_report += f"**Fuel Pressure Drops:** No significant drops detected.\n\n"
 
-            # Example: Wastegate Valve Analysis
+            # 5. Boost Pressure Fluctuations
+            if column_mapping["boost_pressure"]:
+                boost_fluctuations = wot_data[wot_data["Boost Pressure (psi)"].diff().abs() > 3]
+                if not boost_fluctuations.empty:
+                    log_report += f"**Boost Pressure Fluctuations:** Detected at {boost_fluctuations[column_mapping['time']].tolist()} seconds.\n\n"
+
+                    # Snapshot of the issue
+                    st.subheader("Snapshot: Boost Pressure Fluctuations")
+                    fig_fluct = go.Figure()
+                    fig_fluct.add_trace(go.Scatter(x=boost_fluctuations[column_mapping['time']], y=boost_fluctuations["Boost Pressure (psi)"],
+                                                   mode='lines+markers', name='Boost Pressure (psi)', line=dict(color='blue')))
+                    fig_fluct.update_layout(title="Boost Pressure Fluctuation Snapshot", xaxis_title="Time (s)", yaxis_title="Boost Pressure (psi)")
+                    st.plotly_chart(fig_fluct)
+                else:
+                    log_report += f"**Boost Pressure Fluctuations:** No significant fluctuations detected.\n\n"
+
+            # 6. Negative Timing Deviations
+            if column_mapping["ignition_timing"]:
+                negative_timing = wot_data[wot_data[column_mapping["ignition_timing"]] < 0]
+                if not negative_timing.empty:
+                    log_report += f"**Negative Timing Deviations:** Detected at {negative_timing[column_mapping['time']].tolist()} seconds.\n\n"
+
+                    # Snapshot of the issue
+                    st.subheader("Snapshot: Negative Timing Deviation")
+                    fig_neg_timing = go.Figure()
+                    fig_neg_timing.add_trace(go.Scatter(x=negative_timing[column_mapping['time']], y=negative_timing[column_mapping["ignition_timing"]],
+                                                       mode='lines+markers', name='Ignition Timing (DEG)', line=dict(color='orange')))
+                    fig_neg_timing.update_layout(title="Negative Timing Deviation Snapshot", xaxis_title="Time (s)", yaxis_title="Ignition Timing (DEG)")
+                    st.plotly_chart(fig_neg_timing)
+                else:
+                    log_report += f"**Negative Timing Deviations:** No negative timing detected.\n\n"
+
+            # 7. Wastegate Valve Analysis
             if column_mapping["wastegate_valve_position"]:
-                # Wastegate at 0%
+                # a. Wastegate at 0%
                 wastegate_zero = wot_data[wot_data[column_mapping["wastegate_valve_position"]] == 0]
                 if not wastegate_zero.empty:
                     log_report += f"**Wastegate at 0%:** Detected at {wastegate_zero[column_mapping['time']].tolist()} seconds.\n\n"
+
+                    # Snapshot of the issue
+                    st.subheader("Snapshot: Wastegate at 0%")
+                    fig_wg_zero = go.Figure()
+                    fig_wg_zero.add_trace(go.Scatter(x=wastegate_zero[column_mapping['time']], y=wastegate_zero[column_mapping["wastegate_valve_position"]],
+                                                    mode='markers', name='Wastegate Valve Position (%)', marker=dict(color='brown', size=10)))
+                    fig_wg_zero.update_layout(title="Wastegate at 0% Snapshot", xaxis_title="Time (s)", yaxis_title="Wastegate Valve Position (%)")
+                    st.plotly_chart(fig_wg_zero)
                 else:
                     log_report += f"**Wastegate at 0%:** No instances detected.\n\n"
 
-                # Wastegate Fluctuations
+                # b. Wastegate Fluctuations
                 wastegate_fluctuations = wot_data[wot_data[column_mapping["wastegate_valve_position"]].diff().abs() > 5]
                 if not wastegate_fluctuations.empty:
                     log_report += f"**Wastegate Valve Fluctuations:** Detected at {wastegate_fluctuations[column_mapping['time']].tolist()} seconds.\n\n"
+
+                    # Snapshot of the issue
+                    st.subheader("Snapshot: Wastegate Valve Fluctuations")
+                    fig_wg_fluct = go.Figure()
+                    fig_wg_fluct.add_trace(go.Scatter(x=wastegate_fluctuations[column_mapping['time']], y=wastegate_fluctuations[column_mapping["wastegate_valve_position"]],
+                                                      mode='lines+markers', name='Wastegate Valve Position (%)', line=dict(color='brown')))
+                    fig_wg_fluct.update_layout(title="Wastegate Valve Fluctuations Snapshot", xaxis_title="Time (s)", yaxis_title="Wastegate Valve Position (%)")
+                    st.plotly_chart(fig_wg_fluct)
                 else:
                     log_report += f"**Wastegate Valve Fluctuations:** No significant fluctuations detected.\n\n"
 
             # Display the compiled report
             st.markdown(log_report)
 
-            # Additional Summary (if needed)
-            # You can add more summary statistics here based on available data
+            # Additional Summary
+            st.subheader("Summary Statistics")
+            summary_data = {
+                "Metric": [
+                    "Peak Boost (psi)", 
+                    "Peak Ignition Timing (DEG)", 
+                    "Boost Smoothness", 
+                    "Timing Smoothness", 
+                    "Total Fuel Pressure Drops", 
+                    "Total Boost Fluctuations",
+                    "Total Wastegate at 0%", 
+                    "Total Wastegate Fluctuations"
+                ],
+                "Value": [
+                    f"{peak_boost:.2f} psi" if column_mapping["boost_pressure"] else "N/A",
+                    f"{peak_timing:.2f} degrees" if column_mapping["ignition_timing"] else "N/A",
+                    boost_smoothness if column_mapping["boost_pressure"] else "N/A",
+                    timing_smoothness if column_mapping["ignition_timing"] else "N/A",
+                    len(fuel_pressure_issue) if (column_mapping["fuel_rail_pressure"] and column_mapping["target_rail_pressure"]) else "N/A",
+                    len(boost_fluctuations) if column_mapping["boost_pressure"] else "N/A",
+                    len(wastegate_zero) if column_mapping["wastegate_valve_position"] else "N/A",
+                    len(wastegate_fluctuations) if column_mapping["wastegate_valve_position"] else "N/A"
+                ]
+            }
+            summary_df = pd.DataFrame(summary_data)
+            st.table(summary_df)
 
             # Dynamic Plotting: Plot all available data
-            st.subheader("All Available Data Plots")
-            dynamic_fig = make_subplots(specs=[[{"secondary_y": True}]]) if secondary_y else make_subplots()
+            st.subheader("All Engine Parameters")
 
+            # Re-create dynamic list of traces for All Engine Parameters plot
+            all_traces = []
+            all_y_axis_assignments = {}
             for key, col in column_mapping.items():
                 if col and col != column_mapping["time"]:
-                    y_axis = assign_y_axis(col)
-                    if y_axis == 'left':
-                        dynamic_fig.add_trace(go.Scatter(x=wot_data[column_mapping["time"]], y=wot_data[col],
-                                                        mode='lines', name=col), secondary_y=False if secondary_y else None)
-                    else:
-                        dynamic_fig.add_trace(go.Scatter(x=wot_data[column_mapping["time"]], y=wot_data[col],
-                                                        mode='lines', name=col), secondary_y=True)
+                    # If Fuel Rail Pressure is converted, use the new column name
+                    plot_col = "Fuel Rail Pressure (psi)" if key == "fuel_rail_pressure" else col
+                    all_y_axis = assign_y_axis(plot_col)
+                    all_y_axis_assignments[plot_col] = all_y_axis
+                    all_traces.append({
+                        "name": plot_col,
+                        "x": wot_data[column_mapping["time"]],
+                        "y": wot_data[plot_col] if key != "fuel_rail_pressure" else wot_data["Fuel Rail Pressure (psi)"],
+                        "type": "scatter",
+                        "mode": "lines",
+                        "yaxis": "y" if all_y_axis == 'left' else "y2",
+                        "line": {"width": 2}
+                    })
 
-            # Update dynamic figure layout
-            dynamic_layout = {
+            # Determine if a secondary y-axis is needed
+            all_secondary_y = any(all_y_axis_assignments[col] == 'right' for col in all_y_axis_assignments)
+
+            # Create subplot figure for All Engine Parameters
+            if all_secondary_y:
+                all_fig = make_subplots(specs=[[{"secondary_y": True}]])
+            else:
+                all_fig = make_subplots()
+
+            # Add all traces to the figure
+            for trace in all_traces:
+                if trace["yaxis"] == "y":
+                    all_fig.add_trace(go.Scatter(x=trace["x"], y=trace["y"], mode=trace["mode"],
+                                                 name=trace["name"], line=trace["line"]), secondary_y=False if all_secondary_y else None)
+                else:
+                    all_fig.add_trace(go.Scatter(x=trace["x"], y=trace["y"], mode=trace["mode"],
+                                                 name=trace["name"], line=trace["line"]), secondary_y=True)
+
+            # Update layout for All Engine Parameters plot
+            all_layout_dict = {
                 "title": "All Engine Parameters",
                 "xaxis_title": "Time (s)",
                 "hovermode": "x unified",
                 "height": 700
             }
 
-            if secondary_y:
-                dynamic_layout.update({
+            if all_secondary_y:
+                all_layout_dict.update({
                     "yaxis": {"title": "Primary Parameters"},
                     "yaxis2": {"title": "Secondary Parameters", "overlaying": "y", "side": "right"}
                 })
             else:
-                dynamic_layout.update({
+                all_layout_dict.update({
                     "yaxis": {"title": "Parameters"}
                 })
 
-            dynamic_fig.update_layout(dynamic_layout)
-            st.plotly_chart(dynamic_fig)
+            all_fig.update_layout(all_layout_dict)
+
+            # Display the All Engine Parameters plot
+            st.plotly_chart(all_fig)
 
 else:
     st.info("Please upload a CSV file to begin analysis.")
