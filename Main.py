@@ -8,21 +8,14 @@ st.title("Engine Datalog Analyzer")
 # File upload
 uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 if uploaded_file is not None:
-    # Load the CSV data
-    data = pd.read_csv(uploaded_file)
+    # Load the CSV file and skip the first row (metadata)
+    data = pd.read_csv(uploaded_file, skiprows=1)
 
-    # Display the raw column names for inspection
-    st.write("Raw Column Names:", list(data.columns))
-
-    # Clean up column names by stripping leading/trailing spaces
-    data.columns = data.columns.str.strip()
-
-    # Display the cleaned column names for further inspection
+    # Displaying the cleaned column names for inspection
     st.write("Cleaned Column Names:", list(data.columns))
 
-    # Check if 'Accelerator position' is in the column names after cleaning
+    # Detect full-throttle conditions (Accelerator Position > 95%)
     if "Accelerator position (%     )" in data.columns:
-        # Detect full-throttle conditions (Accelerator Position > 95%)
         full_throttle_data = data[data["Accelerator position (%     )"] > 95]
 
         st.subheader("Full Throttle Events")
@@ -97,4 +90,3 @@ if uploaded_file is not None:
         fuel_pressure_issue = data[abs(data['Fuel Rail Pressure (bar   )'] - data['Target Rail press (psi   )']) > 50]
         st.subheader("Fuel Pressure Collapses or Deviation")
         st.write(fuel_pressure_issue)
-    
