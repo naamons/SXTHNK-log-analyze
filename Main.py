@@ -38,24 +38,14 @@ def map_columns(columns):
 
     return mapping
 
-# Function to assign y-axis based on data type
-def assign_y_axis(column_name):
-    percentage_keywords = ['accelerator', 'wastegate']
-    rpm_keywords = ['rpm']
-    timing_keywords = ['timing']
-    pressure_keywords = ['boost', 'rail', 'fuel']
-
-    col_lower = column_name.lower()
-    if any(keyword in col_lower for keyword in percentage_keywords):
-        return 'left'
-    elif any(keyword in col_lower for keyword in rpm_keywords):
-        return 'left'
-    elif any(keyword in col_lower for keyword in timing_keywords):
+# Function to assign y-axis based on data values
+def assign_y_axis(df, column):
+    if column.lower() == 'boost pressure':
         return 'right'
-    elif any(keyword in col_lower for keyword in pressure_keywords):
-        return 'left'
+    elif df[column].max() < 30:
+        return 'right'
     else:
-        return 'left'  # Default to left if uncertain
+        return 'left'
 
 # Function to convert Fuel Rail Pressure from bar to psi
 def convert_bar_to_psi(df, col_name):
@@ -102,14 +92,12 @@ def rename_duplicates(columns):
             new_columns.append(col)
     return new_columns
 
-# Callback function to deselect all parameters
+# Callback functions for buttons
 def deselect_all():
     st.session_state.selected_parameters = []
 
-# Callback function to add all parameters
-def add_all():
-    if 'plot_columns' in st.session_state:
-        st.session_state.selected_parameters = st.session_state.plot_columns.copy()
+def add_all(plot_columns):
+    st.session_state.selected_parameters = plot_columns.copy()
 
 # Initialize Streamlit app
 st.title("Engine Datalog Analyzer")
@@ -256,37 +244,36 @@ if uploaded_file is not None:
                     # Determine which columns to plot
                     plot_columns = [col for col in wot_data_sorted.columns if col != "Time" and not col.endswith("_diff")]
 
-                    # Store plot_columns in session_state for callbacks
-                    st.session_state.plot_columns = plot_columns
-
                     # Initialize Session State for parameter selection
                     if 'selected_parameters' not in st.session_state:
                         st.session_state.selected_parameters = plot_columns.copy()
 
-                    # Define callbacks for buttons
-                    def handle_deselect_all():
-                        st.session_state.selected_parameters = []
+                    # Create a container for buttons and multiselect to ensure correct order
+                    with st.container():
+                        # Create two columns for buttons
+                        button_col1, button_col2 = st.columns([1, 1])
 
-                    def handle_add_all():
-                        st.session_state.selected_parameters = st.session_state.plot_columns.copy()
+                        with button_col1:
+                            if st.button("Deselect All"):
+                                deselect_all()
 
-                    # Create buttons with callbacks
-                    col1, col2 = st.columns([1, 1])
-                    with col1:
-                        st.button("Deselect All", on_click=handle_deselect_all)
-                    with col2:
-                        st.button("Add All", on_click=handle_add_all)
+                        with button_col2:
+                            if st.button("Add All"):
+                                add_all(plot_columns)
 
-                    # Multiselect for parameter selection
-                    selected_params = st.multiselect(
-                        "Select Parameters to Display",
-                        options=plot_columns,
-                        default=st.session_state.selected_parameters,
-                        key="selected_parameters"
-                    )
+                        # Multiselect for parameter selection
+                        selected_params = st.multiselect(
+                            "Select Parameters to Display",
+                            options=plot_columns,
+                            default=st.session_state.selected_parameters,
+                            key="selected_parameters"
+                        )
 
-                    # Assign y-axis for each selected column
-                    y_axis_assignments = {col: assign_y_axis(col) for col in selected_params}
+                        # Update session state with selected parameters
+                        st.session_state.selected_parameters = selected_params
+
+                    # Assign y-axis for each selected column based on data values
+                    y_axis_assignments = {col: assign_y_axis(wot_data_sorted, col) for col in selected_params}
 
                     # Determine if a secondary y-axis is needed
                     secondary_y = any(axis == 'right' for axis in y_axis_assignments.values())
