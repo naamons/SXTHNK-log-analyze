@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
-import io  # Added import for io.StringIO
+import io  # Required for StringIO
 
 # Function to map CSV columns to expected data fields based on keywords
 def map_columns(columns):
@@ -89,6 +89,20 @@ def get_smoothness_score(std_dev, data_type='boost'):
     else:
         return "N/A"
 
+# Function to rename duplicate columns by appending suffixes
+def rename_duplicates(columns):
+    seen = {}
+    new_columns = []
+    for col in columns:
+        if col in seen:
+            seen[col] += 1
+            new_col = f"{col}_{seen[col]}"
+            new_columns.append(new_col)
+        else:
+            seen[col] = 1
+            new_columns.append(col)
+    return new_columns
+
 # Streamlit app
 st.title("Engine Datalog Analyzer")
 
@@ -139,16 +153,25 @@ if uploaded_file is not None:
                         standardized_columns[col] = key.replace("_", " ").title()
             data_standardized = data.rename(columns=standardized_columns)
 
+            # Rename duplicate columns to ensure uniqueness
+            data_standardized.columns = rename_duplicates(data_standardized.columns)
+
             # Detect wide-open throttle (WOT) conditions (Accelerator Position > 95%) if accelerator position is available
             if "Accelerator Position" in data_standardized.columns:
                 wot_data = data_standardized[data_standardized["Accelerator Position"] > 95]
                 st.subheader("Wide-Open Throttle Periods")
-                st.write(wot_data)
+                try:
+                    st.write(wot_data)
+                except Exception as e:
+                    st.error(f"Error displaying WOT data: {e}")
             else:
                 # If accelerator position is not available, consider entire dataset as WOT
                 wot_data = data_standardized.copy()
                 st.subheader("Dataset (Accelerator Position not detected, considering entire dataset)")
-                st.write(wot_data)
+                try:
+                    st.write(wot_data)
+                except Exception as e:
+                    st.error(f"Error displaying dataset: {e}")
 
             # Ensure 'Time' column exists
             if "Time" not in wot_data.columns:
@@ -533,3 +556,5 @@ if uploaded_file is not None:
                     st.plotly_chart(all_fig)
                 except Exception as e:
                     st.error(f"Error plotting All Engine Parameters: {e}")
+else:
+    st.info("Please upload a CSV file to begin analysis.")
