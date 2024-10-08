@@ -41,11 +41,15 @@ if uploaded_file is not None:
         fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Fuel Rail Pressure (bar   )'],
                                  mode='lines', name='Fuel Rail Pressure (bar)', line=dict(color='cyan')), secondary_y=True)
 
+        # Plot the Wastegate Valve Position on the same axis as Boost Pressure
+        fig.add_trace(go.Scatter(x=wot_data['Time (s)'], y=wot_data['Wastegate valve position (%     )'],
+                                 mode='lines', name='Wastegate Valve Position (%)', line=dict(color='green', dash='dot')), secondary_y=False)
+
         # Update axis labels and layout
         fig.update_layout(
             title="Engine Parameters During Wide-Open Throttle (Dual Axis)",
             xaxis_title="Time (s)",
-            yaxis=dict(title="Boost / Rail Pressure / Engine RPM"),
+            yaxis=dict(title="Boost / Rail Pressure / RPM / Wastegate Position"),
             yaxis2=dict(title="Accelerator Position / Timing / Fuel Pressure", overlaying="y", side="right"),
             hovermode="x unified"
         )
