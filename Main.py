@@ -106,6 +106,11 @@ def rename_duplicates(columns):
 def deselect_all():
     st.session_state.selected_parameters = []
 
+# Callback function to add all parameters
+def add_all():
+    if 'plot_columns' in st.session_state:
+        st.session_state.selected_parameters = st.session_state.plot_columns.copy()
+
 # Initialize Streamlit app
 st.title("Engine Datalog Analyzer")
 
@@ -251,13 +256,26 @@ if uploaded_file is not None:
                     # Determine which columns to plot
                     plot_columns = [col for col in wot_data_sorted.columns if col != "Time" and not col.endswith("_diff")]
 
+                    # Store plot_columns in session_state for callbacks
+                    st.session_state.plot_columns = plot_columns
+
                     # Initialize Session State for parameter selection
                     if 'selected_parameters' not in st.session_state:
                         st.session_state.selected_parameters = plot_columns.copy()
 
-                    # Button to deselect all (must be placed before multiselect)
-                    if st.button("Deselect All"):
+                    # Define callbacks for buttons
+                    def handle_deselect_all():
                         st.session_state.selected_parameters = []
+
+                    def handle_add_all():
+                        st.session_state.selected_parameters = st.session_state.plot_columns.copy()
+
+                    # Create buttons with callbacks
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        st.button("Deselect All", on_click=handle_deselect_all)
+                    with col2:
+                        st.button("Add All", on_click=handle_add_all)
 
                     # Multiselect for parameter selection
                     selected_params = st.multiselect(
@@ -266,9 +284,6 @@ if uploaded_file is not None:
                         default=st.session_state.selected_parameters,
                         key="selected_parameters"
                     )
-
-                    # Update session state with selected parameters
-                    st.session_state.selected_parameters = selected_params
 
                     # Assign y-axis for each selected column
                     y_axis_assignments = {col: assign_y_axis(col) for col in selected_params}
@@ -338,7 +353,7 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.error(f"Error plotting All Engine Parameters: {e}")
 
-                # === Timing Anomalies Graph ===
+                # === Ignition Timing Anomalies Graph ===
                 st.subheader("Ignition Timing Over Time with Anomalies")
                 try:
                     if "Ignition Timing" in wot_data_sorted.columns:
