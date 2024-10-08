@@ -62,32 +62,22 @@ def assign_y_axis(column_name):
 def convert_bar_to_psi(df, col_name):
     return df[col_name] * 14.5038
 
-# Function to convert smoothness standard deviation to descriptive scores
-def get_smoothness_score(std_dev, data_type='boost'):
+# Function to calculate frame-to-frame variation (Smoothness)
+def calculate_smoothness(df, column_name, window=5):
     """
-    Define threshold ranges for smoothness descriptors.
-    Adjust these thresholds based on your specific data characteristics.
+    Calculate rolling standard deviation to assess smoothness based on frame-to-frame variations.
+    A lower rolling std indicates smoother variations.
     """
-    if data_type == 'boost':
-        if std_dev < 1:
-            return "Very Smooth"
-        elif std_dev < 3:
-            return "Smooth"
-        elif std_dev < 5:
-            return "Somewhat Smooth"
-        else:
-            return "Not Smooth"
-    elif data_type == 'timing':
-        if std_dev < 1:
-            return "Very Smooth"
-        elif std_dev < 3:
-            return "Smooth"
-        elif std_dev < 5:
-            return "Somewhat Smooth"
-        else:
-            return "Not Smooth"
-    else:
-        return "N/A"
+    return df[column_name].rolling(window=window, min_periods=1).std()
+
+# Function to detect sudden drops in ignition timing
+def detect_timing_anomalies(df, threshold=5):
+    """
+    Detect points where ignition timing drops by more than the specified threshold between consecutive frames.
+    """
+    df['Timing Change'] = df['Ignition Timing'].diff().abs()
+    anomalies = df[df['Timing Change'] > threshold]
+    return anomalies
 
 # Function to rename duplicate columns by appending suffixes
 def rename_duplicates(columns):
@@ -188,22 +178,23 @@ if uploaded_file is not None:
                     st.warning(f"The following columns have non-numeric data and will be excluded from analysis and plotting: {', '.join(non_numeric_columns)}")
                     wot_data = wot_data.drop(columns=non_numeric_columns)
 
-                # Display DataFrame info for debugging
-                st.subheader("DataFrame Information")
-                buffer = io.StringIO()
-                wot_data.info(buf=buffer)
-                s = buffer.getvalue()
-                st.text(s)
+                # Calculate Smoothness based on frame-to-frame variations
+                if "Boost Pressure" in wot_data.columns:
+                    wot_data["Boost Pressure Smoothness"] = calculate_smoothness(wot_data, "Boost Pressure")
+                if "Ignition Timing" in wot_data.columns:
+                    wot_data["Ignition Timing Smoothness"] = calculate_smoothness(wot_data, "Ignition Timing")
 
-                # Display a sample of the DataFrame
-                st.subheader("Data Sample")
-                st.write(wot_data.head())
+                # Detect Timing Anomalies
+                if "Ignition Timing" in wot_data.columns:
+                    timing_anomalies = detect_timing_anomalies(wot_data)
+                else:
+                    timing_anomalies = pd.DataFrame()
 
                 # Create dynamic list of traces
                 traces = []
                 y_axis_assignments = {}
                 for col in wot_data.columns:
-                    if col != "Time":
+                    if col != "Time" and not col.endswith("Smoothness"):
                         y_axis = assign_y_axis(col)
                         y_axis_assignments[col] = y_axis
                         traces.append({
@@ -273,10 +264,9 @@ if uploaded_file is not None:
                         peak_boost_time = wot_data.loc[wot_data["Boost Pressure"].idxmax(), "Time"]
                         log_report += f"**Peak Boost Pressure:** {peak_boost:.2f} psi at {peak_boost_time} seconds.\n\n"
 
-                        # Boost Smoothness
-                        boost_std = wot_data["Boost Pressure"].std()
-                        boost_smoothness = get_smoothness_score(boost_std, data_type='boost')
-                        log_report += f"**Boost Smoothness:** {boost_smoothness} (Std Dev: {boost_std:.2f} psi).\n\n"
+                        # Boost Smoothness (Frame-to-Frame)
+                        boost_smoothness_avg = wot_data["Boost Pressure Smoothness"].mean()
+                        log_report += f"**Average Boost Smoothness (Rolling Std Dev):** {boost_smoothness_avg:.2f} psi.\n\n"
                     except Exception as e:
                         log_report += f"**Boost Pressure Analysis Error:** {e}\n\n"
                 else:
@@ -306,10 +296,9 @@ if uploaded_file is not None:
                         peak_timing_time = wot_data.loc[wot_data["Ignition Timing"].idxmax(), "Time"]
                         log_report += f"**Peak Ignition Timing:** {peak_timing:.2f} degrees at {peak_timing_time} seconds.\n\n"
 
-                        # Timing Smoothness
-                        timing_std = wot_data["Ignition Timing"].std()
-                        timing_smoothness = get_smoothness_score(timing_std, data_type='timing')
-                        log_report += f"**Timing Smoothness:** {timing_smoothness} (Std Dev: {timing_std:.2f} degrees).\n\n"
+                        # Timing Smoothness (Frame-to-Frame)
+                        timing_smoothness_avg = wot_data["Ignition Timing Smoothness"].mean()
+                        log_report += f"**Average Ignition Timing Smoothness (Rolling Std Dev):** {timing_smoothness_avg:.2f} degrees.\n\n"
                     except Exception as e:
                         log_report += f"**Ignition Timing Analysis Error:** {e}\n\n"
                 else:
@@ -354,23 +343,6 @@ if uploaded_file is not None:
                         boost_fluctuations = wot_data[wot_data["Boost Pressure"].diff().abs() > 3]
                         if not boost_fluctuations.empty:
                             log_report += f"**Boost Pressure Fluctuations:** Detected at {boost_fluctuations['Time'].tolist()} seconds.\n\n"
-
-                            # Snapshot of the issue
-                            st.subheader("Snapshot: Boost Pressure Fluctuations")
-                            fig_fluct = go.Figure()
-                            fig_fluct.add_trace(go.Scatter(
-                                x=boost_fluctuations["Time"],
-                                y=boost_fluctuations["Boost Pressure"],
-                                mode='lines+markers',
-                                name='Boost Pressure',
-                                line=dict(color='blue')
-                            ))
-                            fig_fluct.update_layout(
-                                title="Boost Pressure Fluctuation Snapshot",
-                                xaxis_title="Time (s)",
-                                yaxis_title="Boost Pressure (psi)"
-                            )
-                            st.plotly_chart(fig_fluct)
                         else:
                             log_report += f"**Boost Pressure Fluctuations:** No significant fluctuations detected.\n\n"
                     except Exception as e:
@@ -378,35 +350,35 @@ if uploaded_file is not None:
                 else:
                     log_report += f"**Boost Pressure Fluctuations:** Not available.\n\n"
 
-                # 6. Negative Timing Deviations
-                if "Ignition Timing" in wot_data.columns:
-                    try:
-                        negative_timing = wot_data[wot_data["Ignition Timing"] < 0]
-                        if not negative_timing.empty:
-                            log_report += f"**Negative Timing Deviations:** Detected at {negative_timing['Time'].tolist()} seconds.\n\n"
+                # 6. Timing Anomalies
+                if not timing_anomalies.empty:
+                    log_report += f"**Timing Anomalies:** Sudden drops detected at {timing_anomalies['Time'].tolist()} seconds.\n\n"
 
-                            # Snapshot of the issue
-                            st.subheader("Snapshot: Negative Timing Deviation")
-                            fig_neg_timing = go.Figure()
-                            fig_neg_timing.add_trace(go.Scatter(
-                                x=negative_timing["Time"],
-                                y=negative_timing["Ignition Timing"],
-                                mode='lines+markers',
-                                name='Ignition Timing (DEG)',
-                                line=dict(color='orange')
-                            ))
-                            fig_neg_timing.update_layout(
-                                title="Negative Timing Deviation Snapshot",
-                                xaxis_title="Time (s)",
-                                yaxis_title="Ignition Timing (DEG)"
-                            )
-                            st.plotly_chart(fig_neg_timing)
-                        else:
-                            log_report += f"**Negative Timing Deviations:** No negative timing detected.\n\n"
-                    except Exception as e:
-                        log_report += f"**Negative Timing Deviations Analysis Error:** {e}\n\n"
+                    # Detailed Snapshot for Timing Anomalies
+                    st.subheader("Snapshot: Timing Anomalies")
+                    fig_timing_anomalies = go.Figure()
+                    fig_timing_anomalies.add_trace(go.Scatter(
+                        x=wot_data["Time"],
+                        y=wot_data["Ignition Timing"],
+                        mode='lines',
+                        name='Ignition Timing (DEG)',
+                        line=dict(color='orange')
+                    ))
+                    fig_timing_anomalies.add_trace(go.Scatter(
+                        x=timing_anomalies["Time"],
+                        y=timing_anomalies["Ignition Timing"],
+                        mode='markers',
+                        name='Anomalies',
+                        marker=dict(color='red', size=10)
+                    ))
+                    fig_timing_anomalies.update_layout(
+                        title="Ignition Timing Anomalies Snapshot",
+                        xaxis_title="Time (s)",
+                        yaxis_title="Ignition Timing (DEG)"
+                    )
+                    st.plotly_chart(fig_timing_anomalies)
                 else:
-                    log_report += f"**Negative Timing Deviations:** Not available.\n\n"
+                    log_report += f"**Timing Anomalies:** No sudden drops detected.\n\n"
 
                 # 7. Wastegate Valve Analysis
                 if "Wastegate Valve Position" in wot_data.columns:
@@ -439,23 +411,6 @@ if uploaded_file is not None:
                         wastegate_fluctuations = wot_data[wot_data["Wastegate Valve Position"].diff().abs() > 5]
                         if not wastegate_fluctuations.empty:
                             log_report += f"**Wastegate Valve Fluctuations:** Detected at {wastegate_fluctuations['Time'].tolist()} seconds.\n\n"
-
-                            # Snapshot of the issue
-                            st.subheader("Snapshot: Wastegate Valve Fluctuations")
-                            fig_wg_fluct = go.Figure()
-                            fig_wg_fluct.add_trace(go.Scatter(
-                                x=wastegate_fluctuations["Time"],
-                                y=wastegate_fluctuations["Wastegate Valve Position"],
-                                mode='lines+markers',
-                                name='Wastegate Valve Position (%)',
-                                line=dict(color='brown')
-                            ))
-                            fig_wg_fluct.update_layout(
-                                title="Wastegate Valve Fluctuations Snapshot",
-                                xaxis_title="Time (s)",
-                                yaxis_title="Wastegate Valve Position (%)"
-                            )
-                            st.plotly_chart(fig_wg_fluct)
                         else:
                             log_report += f"**Wastegate Valve Fluctuations:** No significant fluctuations detected.\n\n"
                     except Exception as e:
@@ -472,22 +427,24 @@ if uploaded_file is not None:
                     "Metric": [
                         "Peak Boost (psi)", 
                         "Peak Ignition Timing (DEG)", 
-                        "Boost Smoothness", 
-                        "Timing Smoothness", 
+                        "Average Boost Smoothness (Std Dev)", 
+                        "Average Ignition Timing Smoothness (Std Dev)", 
                         "Total Fuel Pressure Drops", 
                         "Total Boost Fluctuations",
                         "Total Wastegate at 0%", 
-                        "Total Wastegate Fluctuations"
+                        "Total Wastegate Fluctuations",
+                        "Total Timing Anomalies"
                     ],
                     "Value": [
                         f"{peak_boost:.2f} psi" if "Boost Pressure" in wot_data.columns else "N/A",
                         f"{peak_timing:.2f} degrees" if "Ignition Timing" in wot_data.columns else "N/A",
-                        boost_smoothness if "Boost Pressure" in wot_data.columns else "N/A",
-                        timing_smoothness if "Ignition Timing" in wot_data.columns else "N/A",
+                        f"{boost_smoothness_avg:.2f} psi" if "Boost Pressure Smoothness" in wot_data.columns else "N/A",
+                        f"{timing_smoothness_avg:.2f} degrees" if "Ignition Timing Smoothness" in wot_data.columns else "N/A",
                         len(fuel_pressure_issue) if ("Fuel Rail Pressure (psi)" in wot_data.columns and "Target Rail Pressure" in wot_data.columns) else "N/A",
                         len(boost_fluctuations) if "Boost Pressure" in wot_data.columns else "N/A",
                         len(wastegate_zero) if "Wastegate Valve Position" in wot_data.columns else "N/A",
-                        len(wastegate_fluctuations) if "Wastegate Valve Position" in wot_data.columns else "N/A"
+                        len(wastegate_fluctuations) if "Wastegate Valve Position" in wot_data.columns else "N/A",
+                        len(timing_anomalies) if "Ignition Timing" in wot_data.columns else "N/A"
                     ]
                 }
                 summary_df = pd.DataFrame(summary_data)
@@ -500,7 +457,7 @@ if uploaded_file is not None:
                 all_traces = []
                 all_y_axis_assignments = {}
                 for col in wot_data.columns:
-                    if col != "Time":
+                    if col != "Time" and not col.endswith("Smoothness"):
                         y_axis = assign_y_axis(col)
                         all_y_axis_assignments[col] = y_axis
                         all_traces.append({
